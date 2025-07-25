@@ -31,6 +31,10 @@ To run Heartbeat with debugging output enabled, run:
 ./heartbeat -c heartbeat.yml -e -d "*"
 ```
 
+```
+go run main.go -c heartbeat.yml -e -d "*" --path.home . --path.config .
+```
+
 
 ### Update
 

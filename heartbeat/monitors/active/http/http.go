@@ -21,6 +21,8 @@ import (
 	"bytes"
 	"net/http"
 	"net/url"
+	"regexp"
+	"time"
 
 	"github.com/elastic/beats/v7/heartbeat/monitors/plugin"
 	"github.com/elastic/beats/v7/heartbeat/monitors/wrappers/wraputil"
@@ -39,6 +41,32 @@ func init() {
 
 var userAgent = useragent.UserAgent("Heartbeat", version.GetDefaultVersion(), version.Commit(), version.BuildTime().String())
 
+// replaceTemplateVars replaces {{var}} or {{var|format}} in the input string with dynamic values.
+func replaceTemplateVars(input string) string {
+	templateRe := regexp.MustCompile(`\{\{\s*([a-zA-Z0-9_]+)(?:\|([^}]+))?\s*}}`)
+	return templateRe.ReplaceAllStringFunc(input, func(match string) string {
+		groups := templateRe.FindStringSubmatch(match)
+		if len(groups) < 2 {
+			return match
+		}
+		key := groups[1]
+		format := ""
+		if len(groups) > 2 {
+			format = groups[2]
+		}
+		switch key {
+		case "date":
+			if format == "" {
+				format = "2006-01-02" // 기본 포맷
+			}
+			return time.Now().Format(format)
+		// 여기에 추가 변수 치환 로직을 넣을 수 있음
+		default:
+			return match // 알 수 없는 변수는 그대로 둠
+		}
+	})
+}
+
 // Create makes a new HTTP monitor
 func create(
 	name string,
@@ -53,6 +81,8 @@ func create(
 	var enc contentEncoder
 
 	if config.Check.Request.SendBody != "" {
+		// 템플릿 변수 치환
+		replacedBody := replaceTemplateVars(config.Check.Request.SendBody)
 		var err error
 		compression := config.Check.Request.Compression
 		enc, err = getContentEncoder(compression.Type, compression.Level)
@@ -61,7 +91,7 @@ func create(
 		}
 
 		buf := bytes.NewBuffer(nil)
-		err = enc.Encode(buf, bytes.NewBufferString(config.Check.Request.SendBody))
+		err = enc.Encode(buf, bytes.NewBufferString(replacedBody))
 		if err != nil {
 			return plugin.Plugin{}, err
 		}

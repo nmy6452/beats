@@ -32,6 +32,10 @@ heartbeat.monitors:
   urls: ["http://localhost:9200"]
   # Configure task schedule
   schedule: '@every 10s'
+  check.request:
+  headers:
+    RequestKey: "{{date}}"
+
   # Total test connection and data exchange timeout
   #timeout: 16s
   # Name of corresponding APM service, if Elastic APM is in use for the monitored service.
@@ -96,15 +100,20 @@ setup.kibana:
 # ================================== Outputs ===================================
 
 # Configure what output to use when sending the data collected by the beat.
+# ---------------------------- console Output ----------------------------
+
+output.console:
+  pretty: true
+
 
 # ---------------------------- Elasticsearch Output ----------------------------
-output.elasticsearch:
+# output.elasticsearch:
   # Array of hosts to connect to.
-  hosts: ["localhost:9200"]
+  # hosts: ["localhost:9200"]
 
   # Performance preset - one of "balanced", "throughput", "scale",
   # "latency", or "custom".
-  preset: balanced
+  # preset: balanced
 
   # Protocol - either `http` (default) or `https`.
   #protocol: "https"
