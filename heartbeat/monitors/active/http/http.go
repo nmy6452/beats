@@ -18,7 +18,6 @@
 package http
 
 import (
-	"bytes"
 	"crypto/rand"
 	"fmt"
 	"math/big"
@@ -237,11 +236,11 @@ func generateRandomAlpha(length int) string {
 func generateUUID() string {
 	uuid := make([]byte, 16)
 	rand.Read(uuid)
-	
+
 	// Set version (4) and variant bits
 	uuid[6] = (uuid[6] & 0x0f) | 0x40
 	uuid[8] = (uuid[8] & 0x3f) | 0x80
-	
+
 	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:16])
 }
 
@@ -256,6 +255,7 @@ func convertToGoDateFormat(format string) string {
 	format = strings.ReplaceAll(format, "ss", "05")
 	return format
 }
+
 // Create makes a new HTTP monitor
 func create(
 	name string,
@@ -270,8 +270,6 @@ func create(
 	var enc contentEncoder
 
 	if config.Check.Request.SendBody != "" {
-		// 템플릿 변수 치환
-		replacedBody := replaceTemplateVars(config.Check.Request.SendBody)
 		var err error
 		compression := config.Check.Request.Compression
 		enc, err = getContentEncoder(compression.Type, compression.Level)
@@ -279,13 +277,8 @@ func create(
 			return plugin.Plugin{}, err
 		}
 
-		buf := bytes.NewBuffer(nil)
-		err = enc.Encode(buf, bytes.NewBufferString(replacedBody))
-		if err != nil {
-			return plugin.Plugin{}, err
-		}
-
-		body = buf.Bytes()
+		// Body는 요청 시마다 템플릿 변수 치환을 위해 원본 텍스트로 저장
+		body = []byte(config.Check.Request.SendBody)
 	}
 
 	validator, err := makeValidateResponse(&config.Check.Response)

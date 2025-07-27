@@ -77,7 +77,7 @@ func newHTTPMonitorHostJob(
 			return fmt.Errorf("could not make http request: %w", err)
 		}
 
-		_, err = execPing(event, client, req, body, config.Transport.Timeout, validator, config.Response)
+		_, err = execPing(event, client, req, body, config.Transport.Timeout, validator, config.Response, enc)
 		if len(redirects) > 0 {
 			_, _ = event.PutValue("http.response.redirects", redirects)
 		}
@@ -101,7 +101,7 @@ func newHTTPMonitorIPsJob(
 		return nil, err
 	}
 
-	pingFactory := createPingFactory(config, port, tls, reqFactory, body, validator)
+	pingFactory := createPingFactory(config, port, tls, reqFactory, body, validator, enc)
 	job, err := monitors.MakeByHostJob(hostname, config.Mode, monitors.NewStdResolver(), pingFactory)
 
 	return job, err
@@ -114,6 +114,7 @@ func createPingFactory(
 	reqFactory requestFactory,
 	body []byte,
 	validator multiValidator,
+	enc contentEncoder,
 ) func(*net.IPAddr) jobs.Job {
 	timeout := config.Transport.Timeout
 
@@ -173,7 +174,7 @@ func createPingFactory(
 			Transport:     httpcommon.HeaderRoundTripper(transport, map[string]string{"User-Agent": userAgent}),
 		}
 
-		end, err := execPing(event, client, req, body, timeout, validator, config.Response)
+		end, err := execPing(event, client, req, body, timeout, validator, config.Response, enc)
 		cbMutex.Lock()
 		defer cbMutex.Unlock()
 
@@ -208,10 +209,10 @@ func buildRequest(addr string, config *Config, enc contentEncoder) (*http.Reques
 		request.SetBasicAuth(config.Username, config.Password)
 	}
 	for k, v := range config.Check.Request.SendHeaders {
-		// 템플릿 변수 치환
+		// 템플릿 변수 치환 (요청 시마다 실행)
 		replacedKey := replaceTemplateVars(k)
 		replacedValue := replaceTemplateVars(v)
-		
+
 		// defining the Host header isn't enough. See https://github.com/golang/go/issues/7682
 		if replacedKey == "Host" {
 			request.Host = replacedValue
@@ -235,11 +236,12 @@ func execPing(
 	timeout time.Duration,
 	validator multiValidator,
 	responseConfig responseConfig,
+	enc contentEncoder,
 ) (end time.Time, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	req = attachRequestBody(&ctx, req, reqBody)
+	req = attachRequestBody(&ctx, req, reqBody, enc)
 
 	// Send the HTTP request. We don't immediately return on error since
 	// we may want to add additional fields to contextualize the error.
@@ -312,11 +314,30 @@ func execPing(
 	return end, errReason
 }
 
-func attachRequestBody(ctx *context.Context, req *http.Request, body []byte) *http.Request {
+func attachRequestBody(ctx *context.Context, req *http.Request, body []byte, enc contentEncoder) *http.Request {
 	req = req.WithContext(*ctx)
 	if len(body) > 0 {
-		req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
-		req.ContentLength = int64(len(body))
+		// Body에서 템플릿 변수 치환 (요청 시마다 실행)
+		bodyStr := string(body)
+		replacedBody := replaceTemplateVars(bodyStr)
+
+		if enc != nil {
+			// Compression이 있는 경우
+			buf := bytes.NewBuffer(nil)
+			err := enc.Encode(buf, bytes.NewBufferString(replacedBody))
+			if err == nil {
+				req.Body = ioutil.NopCloser(buf)
+				req.ContentLength = int64(buf.Len())
+			} else {
+				// 압축 실패 시 원본 사용
+				req.Body = ioutil.NopCloser(bytes.NewBufferString(replacedBody))
+				req.ContentLength = int64(len(replacedBody))
+			}
+		} else {
+			// Compression이 없는 경우
+			req.Body = ioutil.NopCloser(bytes.NewBufferString(replacedBody))
+			req.ContentLength = int64(len(replacedBody))
+		}
 	}
 
 	return req

@@ -28,8 +28,8 @@
     method: POST
     body: |
       '{
-        "guid"="{{$guid}}",
-        "guid"="{{$guid}}",
+        "YYYY-MM-DD"="{{$date|YYYY-MM-DD}}",
+        "YYYY-MM-DD HH:mm:ss"="{{$date|YYYY-MM-DD HH:mm:ss}}",
         "guid"="{{$guid}}",
         "randomUUID"="{{$randomUUID}}",
         "timestamp"="{{$timestamp}}",
